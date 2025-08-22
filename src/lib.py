@@ -145,7 +145,25 @@ class DwClient:
         ) as response:
             if response.status == 200:
                 text = await response.text()
-                return json.loads(text)
+                r = json.loads(text)
+                
+                chart_data = r.get("statistic", {}).get("stat_info", [])
+                chart_data_old = r.get("statistic", {}).get("stat_info_old", [])
+                
+                key_mapping = {
+                    "n": "date",
+                    "sv": "value", 
+                    "unit": "unit"
+                }
+                    
+                def transform_chart_item(item):
+                    transformed = {key_mapping.get(key, key): value for key, value in item.items()}
+                    return transformed
+                
+                return {
+                    "data": [transform_chart_item(item) for item in chart_data],
+                    "old_data": [transform_chart_item(item) for item in chart_data_old]
+                }
             else:
                 print(f"Failed to get chart data: {response.status}")
                 return None

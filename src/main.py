@@ -47,26 +47,11 @@ async def get_chart_data(
     dwClient: DwClient = Depends(get_client),
 ):
     r = await dwClient.get_chart_data(device_id, target.value, metric.value)
-    chart_data = r.get("statistic", {}).get("stat_info", [])
-    chart_data_old = r.get("statistic", {}).get("stat_info_old", [])
     
-    if chart_data is None:
+    if r is None:
         raise HTTPException(500, "Failed to retrieve chart data")
-    
-    key_mapping = {
-        "n": "date",
-        "sv": "value", 
-        "unit": "unit"
-    }
-    
-    def transform_chart_item(item):
-        transformed = {key_mapping.get(key, key): value for key, value in item.items()}
-        return transformed
-      
-    return ChartResponse(
-        data=[transform_chart_item(item) for item in chart_data],
-        old_data=[transform_chart_item(item) for item in chart_data_old]
-    )
+
+    return ChartResponse(**r)
 
 @app.get("/devices/{device_id}/current", response_model=CurrentDataResponse)
 async def get_current_data(
