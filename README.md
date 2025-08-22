@@ -22,7 +22,7 @@ AIPM 앱의 패킷을 캡쳐하여 로그인에 필요한 값을 추출해야 �
 
 캡쳐한 패킷 중 `POST https://dwapi.dawonai.com:18443/iot2/member/loginAction.opi` 요청의 Body에서 다음 값을 추출합니다: `user_id`, `sso_token`, `terminal_id`, `terminal_name`
 
-각 값들을 `.env.example` 파일을 참고하여 `.env` 파일에 입력합니다.
+`.env.example` 파일을 참고하여 `.env` 파일을 생성하고, 추출한 값을 입력합니다.
 
 ```ini
 USER_ID=""
