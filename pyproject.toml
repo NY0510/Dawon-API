@@ -1,0 +1,11 @@
+[project]
+name = "Dawon-API"
+version = "1.0.0"
+description = "Unofficial API for Dawon AIPM"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "aiohttp>=3.12.15",
+    "dotenv>=0.9.9",
+    "fastapi[standard]>=0.116.1",
+]
