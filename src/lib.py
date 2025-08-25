@@ -54,36 +54,82 @@ class DwClient:
             else:
                 print(f"Login failed with status: {response.status}")
                 return False
+    
+    async def _is_session_expired(self, response_text: str) -> bool:
+        return (
+            '<meta http-equiv="refresh"' in response_text and 
+            '/iot2/login/' in response_text
+        ) or 'login' in response_text.lower()
+    
+    async def _request_with_retry(self, request_func, *args, **kwargs):
+        """요청을 실행하고 세션 만료시 자동으로 재로그인 후 재시도"""
+        for attempt in range(2):  # 최대 2번 시도 (원래 요청 + 재로그인 후 재시도)
+            response_data = await request_func(*args, **kwargs)
+            
+            if response_data is None:
+                if attempt == 0:  # 첫 번째 시도에서 실패한 경우
+                    print("Session expired, attempting re-login...")
+                    if await self.login():
+                        print("Re-login successful, retrying request...")
+                        continue
+                    else:
+                        print("Re-login failed")
+                        return None
+                else:  # 재시도에서도 실패한 경우
+                    return None
+            else:
+                return response_data
+        
+        return None
                 
     async def get_devices(self):
-        async with self.session.get(f'{self.base_url}/product/device_list.opi') as response:
-            if response.status == 200:
-                text = await response.text()
-                return json.loads(text).get('devices', [])
-            else:
-                print(f"Failed to get devices: {response.status}")
-                return None
+        async def _get_devices_internal():
+            async with self.session.get(f'{self.base_url}/product/device_list.opi') as response:
+                if response.status == 200:
+                    text = await response.text()
+                    
+                    # 세션 만료 체크
+                    if await self._is_session_expired(text):
+                        return None
+                    
+                    try:
+                        return json.loads(text).get('devices', [])
+                    except json.JSONDecodeError:
+                        print("Failed to parse devices JSON response")
+                        return None
+                else:
+                    print(f"Failed to get devices: {response.status}")
+                    return None
+        
+        return await self._request_with_retry(_get_devices_internal)
             
     async def get_websocket_payload(self, device_id: str):
-        async with self.session.get(f'{self.base_url}/product/productDetailPlug.opi?deviceId={device_id}') as response:
-            if response.status == 200:
-                html_content = await response.text()
-                
-                # wsUri 추출
-                ws_uri_match = re.search(r'var\s+wsUri\s*=\s*["\']([^"\']+)["\']', html_content)
-                ws_uri = ws_uri_match.group(1) if ws_uri_match else None
-                
-                # message 추출 
-                message_match = re.search(r'var\s+message\s*=\s*["\']([^"\']*)["\']', html_content)
-                message = message_match.group(1) if message_match else None
-                
-                return {
-                    'wsUri': ws_uri,
-                    'message': message,
-                }
-            else:
-                print(f"Failed to get websocket data: {response.status}")
-                return None
+        async def _get_websocket_payload_internal():
+            async with self.session.get(f'{self.base_url}/product/productDetailPlug.opi?deviceId={device_id}') as response:
+                if response.status == 200:
+                    html_content = await response.text()
+                    
+                    # 세션 만료 체크
+                    if await self._is_session_expired(html_content):
+                        return None
+                    
+                    # wsUri 추출
+                    ws_uri_match = re.search(r'var\s+wsUri\s*=\s*["\']([^"\']+)["\']', html_content)
+                    ws_uri = ws_uri_match.group(1) if ws_uri_match else None
+                    
+                    # message 추출 
+                    message_match = re.search(r'var\s+message\s*=\s*["\']([^"\']*)["\']', html_content)
+                    message = message_match.group(1) if message_match else None
+                    
+                    return {
+                        'wsUri': ws_uri,
+                        'message': message,
+                    }
+                else:
+                    print(f"Failed to get websocket data: {response.status}")
+                    return None
+        
+        return await self._request_with_retry(_get_websocket_payload_internal)
     
     async def get_websocket_data(self, ws_uri: str, message: str):
         try:
@@ -134,39 +180,51 @@ class DwClient:
             return None
         
     async def get_chart_data(self, device_id: str, target: str, metric: str):
-        async with self.session.post(f'{self.base_url}/product/get_chart_data.opi',
-            data={
-                'device_id': device_id,
-                'resource_uri': '/100/0/21',
-                'target': target,
-                'type':'avg',
-                'showdiv': metric.upper(),
-            }
-        ) as response:
-            if response.status == 200:
-                text = await response.text()
-                r = json.loads(text)
-                
-                chart_data = r.get("statistic", {}).get("stat_info", [])
-                chart_data_old = r.get("statistic", {}).get("stat_info_old", [])
-                
-                key_mapping = {
-                    "n": "date",
-                    "sv": "value", 
-                    "unit": "unit"
+        async def _get_chart_data_internal():
+            async with self.session.post(f'{self.base_url}/product/get_chart_data.opi',
+                data={
+                    'device_id': device_id,
+                    'resource_uri': '/100/0/21',
+                    'target': target,
+                    'type':'avg',
+                    'showdiv': metric.upper(),
                 }
+            ) as response:
+                if response.status == 200:
+                    text = await response.text()
                     
-                def transform_chart_item(item):
-                    transformed = {key_mapping.get(key, key): value for key, value in item.items()}
-                    return transformed
-                
-                return {
-                    "data": [transform_chart_item(item) for item in chart_data],
-                    "old_data": [transform_chart_item(item) for item in chart_data_old]
-                }
-            else:
-                print(f"Failed to get chart data: {response.status}")
-                return None
+                    # 세션 만료 체크
+                    if await self._is_session_expired(text):
+                        return None
+                    
+                    try:
+                        r = json.loads(text)
+                    except json.JSONDecodeError as e:
+                        print(f"JSON decode error: {e}")
+                        return None
+                    
+                    chart_data = r.get("statistic", {}).get("stat_info", [])
+                    chart_data_old = r.get("statistic", {}).get("stat_info_old", [])
+                    
+                    key_mapping = {
+                        "n": "date",
+                        "sv": "value", 
+                        "unit": "unit"
+                    }
+                        
+                    def transform_chart_item(item):
+                        transformed = {key_mapping.get(key, key): value for key, value in item.items()}
+                        return transformed
+                    
+                    return {
+                        "data": [transform_chart_item(item) for item in chart_data],
+                        "old_data": [transform_chart_item(item) for item in chart_data_old]
+                    }
+                else:
+                    print(f"Failed to get chart data: {response.status}")
+                    return None
+        
+        return await self._request_with_retry(_get_chart_data_internal)
             
     async def get_current_data(self, device_id: str):
         websocket_data = await self.get_websocket_payload(device_id)
