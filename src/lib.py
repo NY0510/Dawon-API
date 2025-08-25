@@ -133,7 +133,7 @@ class DwClient:
     
     async def get_websocket_data(self, ws_uri: str, message: str):
         try:
-            print(f"Connecting to WebSocket: {ws_uri}")
+            # print(f"Connecting to WebSocket: {ws_uri}")
             
             # 쿠키를 헤더로 변환
             cookie_header = None
@@ -152,10 +152,10 @@ class DwClient:
             headers['Origin'] = DEFAULT_HEADERS['origin']
             
             async with websockets.connect(ws_uri, additional_headers=headers) as websocket:
-                print("WebSocket connected successfully")
+                # print("WebSocket connected successfully")
                 
                 # 메시지 전송
-                print(f"Sending message: {message}")
+                # print(f"Sending message: {message}")
                 await websocket.send(message)
                 
                 # 메시지 3개만 수신
