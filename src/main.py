@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request, Depends, Query
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from lib import DwClient
@@ -7,6 +8,7 @@ from models.device import DevicesResponse
 from models.chart import ChartResponse
 from models.current import CurrentDataResponse
 from models.enums import Target, Metric
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -19,7 +21,26 @@ async def lifespan(app: FastAPI):
     yield
     await client.__aexit__(None, None, None)
 
-app = FastAPI(lifespan=lifespan, title="Dawon-API", description="Unofficial API for Dawon AIPM", version="1.0.0", license_info={"name": "GPL-3.0", "url": "https://www.gnu.org/licenses/gpl-3.0.en.html"})
+
+app = FastAPI(
+    lifespan=lifespan,
+    title="Dawon-API",
+    description="Unofficial API for Dawon AIPM",
+    version="1.0.0",
+    license_info={
+        "name": "GPL-3.0",
+        "url": "https://www.gnu.org/licenses/gpl-3.0.en.html",
+    },
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 def get_client(request: Request) -> DwClient:
     client = request.app.state.dwClient
@@ -27,17 +48,20 @@ def get_client(request: Request) -> DwClient:
         raise HTTPException(500, "Client not initialized")
     return client
 
+
 @app.get("/")
 async def root():
     return {"message": "Dawon API is running"}
+
 
 @app.get("/devices", response_model=DevicesResponse)
 async def get_devices(dwClient: DwClient = Depends(get_client)):
     r = await dwClient.get_devices()
     if r is None:
         raise HTTPException(500, "Failed to retrieve devices")
-    
+
     return JSONResponse(r)
+
 
 @app.get("/devices/{device_id}/chart", response_model=ChartResponse)
 async def get_chart_data(
@@ -47,20 +71,27 @@ async def get_chart_data(
     dwClient: DwClient = Depends(get_client),
 ):
     r = await dwClient.get_chart_data(device_id, target.value, metric.value)
-    
+
     if r is None:
         raise HTTPException(500, "Failed to retrieve chart data")
 
     return ChartResponse(**r)
 
+
 @app.get("/devices/{device_id}/current", response_model=CurrentDataResponse)
 async def get_current_data(
-  device_id: str,
-  dwClient: DwClient = Depends(get_client),
+    device_id: str,
+    dwClient: DwClient = Depends(get_client),
 ):
     r = await dwClient.get_current_data(device_id)
-    
+
     if r is None:
         raise HTTPException(500, "Failed to retrieve current data")
-    
+
     return CurrentDataResponse(**r)
+
+
+def main():
+    import uvicorn
+
+    uvicorn.run("main:app", host="0.0.0.0", port=8000)
